@@ -1,0 +1,13 @@
+Metadata-Version: 2.4
+Name: drug-image-fetcher
+Version: 0.1.0
+Summary: Recupero affidabile immagini confezione farmaco da codice AIC
+Requires-Python: >=3.11
+Requires-Dist: beautifulsoup4>=4.12.0
+Requires-Dist: requests>=2.31.0
+Requires-Dist: urllib3>=2.0.0
+Provides-Extra: httpx
+Requires-Dist: httpx>=0.27.0; extra == "httpx"
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0.0; extra == "dev"
+Requires-Dist: httpx>=0.27.0; extra == "dev"

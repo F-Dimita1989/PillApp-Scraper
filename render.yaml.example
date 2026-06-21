@@ -1,0 +1,33 @@
+# PillApp su Render — architettura C# + Python
+#
+# Servizio 1: pillapp-api        (C# — già esistente)
+# Servizio 2: pillapp-drug-image (Python — nuovo microservizio)
+#
+# L'app React Native chiama SOLO il C#.
+# Il C# chiama il Python in rete interna Render.
+
+services:
+  # --- Microservizio Python (nuovo) ---
+  - type: web
+    name: pillapp-drug-image
+    runtime: python
+    rootDir: .                    # repo con drug_image_fetcher/
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn examples.fastapi_integration:app --host 0.0.0.0 --port $PORT
+    plan: free                     # o starter se serve più uptime
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: GOOGLE_CSE_API_KEY
+        sync: false
+      - key: GOOGLE_CSE_ENGINE_ID
+        sync: false
+
+  # --- Backend C# (esistente — aggiungi solo env var) ---
+  # Nel dashboard del servizio C# già attivo, aggiungi:
+  #
+  #   DrugImageService__BaseUrl = https://pillapp-drug-image.onrender.com
+  #
+  # (doppio underscore = nested config in ASP.NET Core)
+  #
+  # Oppure in appsettings.Production.json sul repo C#
