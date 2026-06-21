@@ -34,20 +34,27 @@ MANUFACTURER_SEARCH_TEMPLATES: dict[str, str] = {
     "teva": "https://www.tevaitalia.it/search?q={query}",
 }
 
-# Template ricerca interna su farmacie con URL stabili
+# Template ricerca interna su farmacie (verificati 2025)
 PHARMACY_SEARCH_TEMPLATES: tuple[tuple[str, str], ...] = (
     (
-        "farmaciaigea.com",
-        "https://www.farmaciaigea.com/catalogsearch/result/?q={query}",
+        "farmae.it",
+        "https://www.farmae.it/search?q={query}",
     ),
     (
-        "farmae.it",
-        "https://www.farmae.it/catalogsearch/result/?q={query}",
+        "farmaciaigea.com",
+        "https://www.farmaciaigea.com/search?q={query}",
     ),
     (
         "redcare.it",
         "https://www.redcare.it/search?q={query}",
     ),
+)
+
+# Pattern path scheda prodotto per estrazione link da pagine ricerca
+PRODUCT_PAGE_PATH_HINTS: tuple[str, ...] = (
+    "/products/",
+    "/prodotto/",
+    "/product/",
 )
 
 

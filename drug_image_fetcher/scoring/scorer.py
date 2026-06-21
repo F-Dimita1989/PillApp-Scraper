@@ -18,6 +18,7 @@ from drug_image_fetcher.normalize.text import (
     token_overlap_ratio,
     tokenize,
 )
+from drug_image_fetcher.search.trusted_sites import is_trusted_url
 
 _GENERIC_PAGE_HINTS = re.compile(
     r"(cookie|privacy|login|registrati|newsletter|carrello|"
@@ -56,7 +57,7 @@ class PageScorer:
 
         results: list[PageMatch] = []
         for candidate in candidates:
-            image_bonus, image_rejected = self._score_image(candidate)
+            image_bonus, image_rejected = self._score_image(candidate, drug)
             total = max(0.0, min(1.0, base_score + image_bonus))
             all_rejected = list(rejected) + image_rejected
 
@@ -172,8 +173,24 @@ class PageScorer:
                 matched.append("marketing_authorization_holder")
                 field_scores["company"] = self._config.weight_company_match
 
-        # Penalità pagina generica
-        if _GENERIC_PAGE_HINTS.search(page_text) and "aic" not in matched:
+        # Penalità pagina generica — non su schede prodotto trusted
+        package_fields = {
+            "dosage",
+            "pharmaceutical_form",
+            "package_quantity",
+        }
+        strong_package = (
+            "name" in matched and len(package_fields & set(matched)) >= 3
+        )
+        is_product_page = any(
+            hint in page_url for hint in ("/products/", "/prodotto/", "/product/")
+        )
+
+        if (
+            _GENERIC_PAGE_HINTS.search(page_text)
+            and "aic" not in matched
+            and not (is_trusted_url(page_url) and (is_product_page or strong_package))
+        ):
             score -= self._config.penalty_generic_page
             rejected.append("contenuto pagina generico/non prodotto")
 
@@ -186,16 +203,42 @@ class PageScorer:
         return max(0.0, min(1.0, score)), matched, rejected, field_scores
 
     def _score_image(
-        self, candidate: CandidateImage
+        self, candidate: CandidateImage, drug: DrugInfo | None = None
     ) -> tuple[float, list[str]]:
         bonus = 0.0
         rejected: list[str] = []
 
+        url_lower = candidate.image_url.lower()
+
+        if any(
+            bad in url_lower
+            for bad in (
+                "product-menu",
+                "cosmetici",
+                "menu-",
+                "/menu/",
+                "banner",
+                "header",
+                "sidebar",
+                "nav-",
+            )
+        ):
+            bonus -= 0.45
+            rejected.append("immagine di menu/banner, non confezione")
+
         if candidate.extraction_method in {"meta_og_image", "json_ld"}:
-            bonus += 0.05
+            bonus += 0.15
 
         if candidate.metadata.get("product_hint"):
             bonus += 0.04
+
+        if drug:
+            name_token = normalize_text(drug.name).split()[0] if drug.name else ""
+            alt_blob = normalize_text(f"{candidate.alt_text} {candidate.title}")
+            if name_token and (
+                name_token in url_lower or name_token in alt_blob
+            ):
+                bonus += 0.10
 
         width = candidate.width
         height = candidate.height
@@ -243,12 +286,22 @@ def select_best_match(
     )
 
     best = ranked[0]
-    if best.relevance_score < config.min_confidence_score:
-        return None
-
-    # Vincolo aggiuntivo conservativo: serve AIC o match forte su nome+dosaggio+forma
     matched_set = set(best.matched_fields)
     has_aic = "aic" in matched_set or "aic_url" in matched_set
+    has_strong_package = _has_strong_package_match(matched_set)
+
+    required_score = (
+        config.min_confidence_score
+        if has_aic
+        else config.min_confidence_package_match
+        if has_strong_package
+        else config.min_confidence_score
+    )
+
+    if best.relevance_score < required_score:
+        return None
+
+    # Vincolo aggiuntivo: serve AIC o match forte su nome + dettagli confezione
     has_package_details = (
         {"dosage", "pharmaceutical_form", "package_quantity"} & matched_set
     )
@@ -273,4 +326,27 @@ def select_best_match(
     if blocking:
         return None
 
+    # Non accettare immagini da pagine di sola ricerca (troppo ambigue)
+    if "/search" in best.source_page_url.lower():
+        return None
+
+    if best.candidates:
+        img_url = best.candidates[0].image_url.lower()
+        if any(
+            bad in img_url
+            for bad in ("product-menu", "cosmetici", "menu-", "placeholder")
+        ):
+            return None
+
     return best
+
+
+def _has_strong_package_match(matched_fields: set[str]) -> bool:
+    """Nome + dosaggio + forma + quantità tutti presenti (match esatto)."""
+    required = {
+        "name",
+        "dosage",
+        "pharmaceutical_form",
+        "package_quantity",
+    }
+    return required <= matched_fields

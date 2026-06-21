@@ -110,7 +110,7 @@ class DrugImageEngine:
 
         from drug_image_fetcher.search.providers import build_production_providers
 
-        return build_production_providers(drug, self._config)
+        return build_production_providers(drug, self._config, self._http.get)
 
     def _process_page(
         self, drug: DrugInfo, page_url: str

@@ -59,6 +59,10 @@ class FetcherConfig:
     google_cse_engine_id: str | None = None
     enable_trusted_pharmacy_search: bool = True
     enable_manufacturer_search: bool = True
+    enable_pharmacy_product_discovery: bool = True
+
+    # Soglia alternativa quando AIC assente ma confezione matcha (nome+dosaggio+forma+qty)
+    min_confidence_package_match: float = 0.62
 
     @classmethod
     def conservative(cls) -> FetcherConfig:
@@ -83,6 +87,7 @@ class FetcherConfig:
         api_key = os.getenv("GOOGLE_CSE_API_KEY")
         engine_id = os.getenv("GOOGLE_CSE_ENGINE_ID")
         cache_dir = os.getenv("DRUG_IMAGE_CACHE_DIR")
+        min_conf = os.getenv("DRUG_IMAGE_MIN_CONFIDENCE")
 
         if api_key:
             config.google_cse_api_key = api_key
@@ -90,6 +95,8 @@ class FetcherConfig:
             config.google_cse_engine_id = engine_id
         if cache_dir:
             config.cache_directory = cache_dir
+        if min_conf:
+            config.min_confidence_score = float(min_conf)
 
         for key, value in overrides.items():
             if hasattr(config, key):

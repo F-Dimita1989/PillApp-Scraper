@@ -14,7 +14,8 @@ from drug_image_fetcher.models import CandidateImage
 
 _SKIP_URL_PATTERNS = re.compile(
     r"(favicon|sprite|logo|banner|icon|avatar|placeholder|pixel|tracking|"
-    r"badge|social|footer|header-nav|1x1|spacer|blank\.gif|data:image)",
+    r"badge|social|footer|header-nav|1x1|spacer|blank\.gif|data:image|"
+    r"product-menu|cosmetici|menu-|/menu/|promo-|sidebar|nav-)",
     re.IGNORECASE,
 )
 

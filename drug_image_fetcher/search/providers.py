@@ -15,7 +15,7 @@ import json
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urljoin
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -27,6 +27,7 @@ from drug_image_fetcher.models import DrugInfo
 from drug_image_fetcher.normalize.text import normalize_aic
 from drug_image_fetcher.search.trusted_sites import (
     PHARMACY_SEARCH_TEMPLATES,
+    PRODUCT_PAGE_PATH_HINTS,
     build_restricted_search_query,
     is_trusted_url,
     resolve_manufacturer_search_url,
@@ -105,6 +106,10 @@ class AifaDirectPageProvider(SearchProvider):
         urls = [
             (
                 f"https://farmaci.agenziafarmaco.gov.it/bancadatifarmaci/"
+                f"cerca-farmaco?search={aic}"
+            ),
+            (
+                f"https://farmaci.agenziafarmaco.gov.it/bancadatifarmaci/"
                 f"farmaco?aic={aic}"
             ),
         ]
@@ -146,6 +151,96 @@ class TrustedPharmacySearchProvider(SearchProvider):
                 break
 
         return results
+
+
+class PharmacyProductDiscoveryProvider(SearchProvider):
+    """
+    Dalla pagina ricerca di una farmacia trusted estrae link a schede prodotto
+  filtrati per nome farmaco.
+    """
+
+    name = "pharmacy_products"
+
+    def __init__(
+        self,
+        drug: DrugInfo,
+        config: FetcherConfig,
+        http_get: Callable[[str], str | None],
+    ) -> None:
+        self._drug = drug
+        self._config = config
+        self._http_get = http_get
+
+    def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
+        results: list[SearchResult] = []
+        seen: set[str] = set()
+        encoded = quote_plus(query)
+
+        for domain, template in PHARMACY_SEARCH_TEMPLATES:
+            if domain not in self._config.trusted_domains:
+                continue
+
+            search_url = template.format(query=encoded)
+            html = self._http_get(search_url)
+            if not html:
+                continue
+
+            for product_url in self._extract_product_links(
+                html, search_url, query
+            ):
+                if product_url in seen:
+                    continue
+                seen.add(product_url)
+                results.append(
+                    SearchResult(
+                        url=product_url,
+                        title=f"Prodotto {domain}",
+                        provider=self.name,
+                    )
+                )
+                if len(results) >= max_results:
+                    return results
+
+        return results
+
+    def _extract_product_links(
+        self, html: str, base_url: str, query: str
+    ) -> list[str]:
+        from bs4 import BeautifulSoup
+        from drug_image_fetcher.normalize.text import normalize_text, tokenize
+
+        soup = BeautifulSoup(html, "html.parser")
+        links: list[str] = []
+        name_tokens = set(tokenize(self._drug.name))
+        query_tokens = set(tokenize(query))
+
+        for anchor in soup.find_all("a", href=True):
+            href = anchor.get("href", "").strip()
+            if not href or href.startswith("#"):
+                continue
+            if not any(hint in href for hint in PRODUCT_PAGE_PATH_HINTS):
+                continue
+
+            absolute = urljoin(base_url, href).split("?")[0].split("#")[0]
+            if not is_trusted_url(absolute, self._config.trusted_domains):
+                continue
+
+            anchor_text = normalize_text(anchor.get_text(" ", strip=True))
+            href_norm = absolute.lower()
+            relevant = bool(
+                name_tokens
+                and (
+                    any(t in href_norm for t in name_tokens)
+                    or any(t in anchor_text for t in name_tokens)
+                )
+            )
+            if not relevant and query_tokens:
+                relevant = any(t in href_norm for t in query_tokens if len(t) > 3)
+
+            if relevant and absolute not in links:
+                links.append(absolute)
+
+        return links[:8]
 
 
 class ManufacturerSiteProvider(SearchProvider):
@@ -289,6 +384,7 @@ class GoogleCustomSearchProvider(SearchProvider):
 def build_production_providers(
     drug: DrugInfo,
     config: FetcherConfig,
+    http_get: Callable[[str], str | None] | None = None,
 ) -> CompositeSearchProvider:
     """
     Stack produzione consigliato per PillApp.
@@ -299,8 +395,13 @@ def build_production_providers(
         AifaDirectPageProvider(drug),
     ]
 
-    if config.enable_trusted_pharmacy_search:
-        providers.append(TrustedPharmacySearchProvider(config))
+    if config.enable_trusted_pharmacy_search and http_get:
+        if config.enable_pharmacy_product_discovery:
+            providers.append(
+                PharmacyProductDiscoveryProvider(drug, config, http_get)
+            )
+        else:
+            providers.append(TrustedPharmacySearchProvider(config))
 
     if config.enable_manufacturer_search and drug.marketing_authorization_holder:
         providers.append(ManufacturerSiteProvider(drug))
@@ -331,4 +432,4 @@ def build_default_providers(
     if extra_urls:
         merged = list(cfg.extra_curated_urls) + list(extra_urls)
         cfg.extra_curated_urls = merged
-    return build_production_providers(drug, cfg)
+    return build_production_providers(drug, cfg, http_get)

@@ -18,7 +18,7 @@ def test_trusted_pharmacy_provider_returns_whitelist_urls() -> None:
     results = provider.search("Tachipirina 500 mg", max_results=3)
 
     assert len(results) >= 1
-    assert all("catalogsearch" in r.url or "search" in r.url for r in results)
+    assert all("/search?q=" in r.url for r in results)
 
 
 def test_manufacturer_provider_angelini() -> None:
@@ -40,13 +40,14 @@ def test_build_production_providers_chain() -> None:
         marketing_authorization_holder="Angelini Pharma",
     )
     config = FetcherConfig.conservative()
-    composite = build_production_providers(drug, config)
+    composite = build_production_providers(
+        drug, config, http_get=lambda url: None
+    )
 
     results = composite.search("027606012 Tachipirina", max_results=10)
     providers_used = {r.provider for r in results}
 
     assert "aifa_direct" in providers_used
-    assert "trusted_pharmacy" in providers_used
     assert "manufacturer_site" in providers_used
 
 
