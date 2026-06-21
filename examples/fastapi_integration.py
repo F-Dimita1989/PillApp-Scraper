@@ -1,12 +1,13 @@
 """
-Esempio integrazione FastAPI — da copiare nel backend PillApp.
+FastAPI app — entry point del microservizio Python su Render.
 
-Avvio:
-    pip install fastapi uvicorn
-    uvicorn examples.fastapi_integration:app --reload
+Avvio locale:
+    uvicorn examples.fastapi_integration:app --reload --port 8000
 
-Il client mobile o il backend C# chiamano:
-    POST /api/v1/drugs/image
+Test:
+    curl -X POST http://localhost:8000/api/v1/drugs/image \
+         -H "Content-Type: application/json" \
+         -d '{"aic": "048414104"}'
 """
 
 from __future__ import annotations
@@ -18,51 +19,26 @@ from pydantic import BaseModel, Field
 
 from drug_image_fetcher.api import fetch_drug_image
 from drug_image_fetcher.config import FetcherConfig
-from drug_image_fetcher.models import DrugInfo, ImageFetchResult
 
-app = FastAPI(title="PillApp Drug Image Service", version="0.1.0")
-
-
-class DrugInfoPayload(BaseModel):
-    aic: str = Field(..., min_length=9, max_length=12)
-    name: str
-    dosage: str | None = None
-    pharmaceutical_form: str | None = None
-    package_quantity: str | None = None
-    marketing_authorization_holder: str | None = None
-    active_substance: str | None = None
+app = FastAPI(title="PillApp Drug Image Service", version="2.0.0")
 
 
-class ImageFetchResponse(BaseModel):
+class DrugImageRequest(BaseModel):
+    aic: str = Field(..., min_length=9, max_length=12, description="Codice AIC a 9 cifre")
+    name: str | None = Field(None, description="Nome commerciale opzionale")
+
+
+class DrugImageResponse(BaseModel):
     success: bool
-    image_url: str | None = Field(None, alias="imageUrl")
-    source_page_url: str | None = Field(None, alias="sourcePageUrl")
-    confidence_score: float = Field(0.0, alias="confidenceScore")
-    matched_fields: list[str] = Field(default_factory=list, alias="matchedFields")
-    rejected_reasons: list[str] = Field(default_factory=list, alias="rejectedReasons")
+    imageUrl: str | None = None
+    sourcePageUrl: str | None = None
     message: str = ""
 
-    model_config = {"populate_by_name": True}
 
-    @classmethod
-    def from_result(cls, result: ImageFetchResult) -> ImageFetchResponse:
-        data = result.to_dict()
-        return cls(**data)
-
-
-@app.post("/api/v1/drugs/image", response_model=ImageFetchResponse)
-def get_drug_image(payload: DrugInfoPayload) -> ImageFetchResponse:
-    drug = DrugInfo(
-        aic=payload.aic,
-        name=payload.name,
-        dosage=payload.dosage,
-        pharmaceutical_form=payload.pharmaceutical_form,
-        package_quantity=payload.package_quantity,
-        marketing_authorization_holder=payload.marketing_authorization_holder,
-        active_substance=payload.active_substance,
-    )
-    result = fetch_drug_image(drug, config=FetcherConfig.production())
-    return ImageFetchResponse.from_result(result)
+@app.post("/api/v1/drugs/image", response_model=DrugImageResponse)
+def get_drug_image(payload: DrugImageRequest) -> DrugImageResponse:
+    result = fetch_drug_image(payload.aic, name=payload.name, config=FetcherConfig.production())
+    return DrugImageResponse(**result.to_dict())
 
 
 @app.get("/health")

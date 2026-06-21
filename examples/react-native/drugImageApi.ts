@@ -3,15 +3,13 @@
  *
  * .env Expo:
  *   EXPO_PUBLIC_API_URL=https://pillapp-api.onrender.com
- *
- * Il C# espone POST /api/v1/drugs/image (camelCase nel body RN).
  */
 
-import type { DrugInfoPayload, ImageFetchResponse } from './types';
+import type { DrugImageRequest, DrugImageResponse } from './types';
 
 const API_BASE =
   process.env.EXPO_PUBLIC_DRUG_IMAGE_API_URL ??
-  process.env.EXPO_PUBLIC_API_URL ?? // stesso backend Render PillApp
+  process.env.EXPO_PUBLIC_API_URL ??
   'http://localhost:8000';
 
 const DEFAULT_TIMEOUT_MS = 25_000;
@@ -27,14 +25,13 @@ export class DrugImageApiError extends Error {
 }
 
 export async function fetchDrugPackageImage(
-  drug: DrugInfoPayload,
+  drug: DrugImageRequest,
   options?: { signal?: AbortSignal; timeoutMs?: number },
-): Promise<ImageFetchResponse> {
+): Promise<DrugImageResponse> {
   const controller = new AbortController();
   const timeoutMs = options?.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
 
-  // Se il chiamante passa un signal esterno, abort anche su quello
   const onExternalAbort = () => controller.abort();
   options?.signal?.addEventListener('abort', onExternalAbort);
 
@@ -42,26 +39,15 @@ export async function fetchDrugPackageImage(
     const response = await fetch(`${API_BASE}/api/v1/drugs/image`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({
-        aic: drug.aic,
-        name: drug.name,
-        dosage: drug.dosage ?? null,
-        // C# accetta camelCase; inoltra snake_case al Python internamente
-        pharmaceuticalForm: drug.pharmaceutical_form ?? null,
-        packageQuantity: drug.package_quantity ?? null,
-        marketingAuthorizationHolder: drug.marketing_authorization_holder ?? null,
-      }),
+      body: JSON.stringify({ aic: drug.aic, name: drug.name ?? null }),
       signal: controller.signal,
     });
 
     if (!response.ok) {
-      throw new DrugImageApiError(
-        `Errore server (${response.status})`,
-        response.status,
-      );
+      throw new DrugImageApiError(`Errore server (${response.status})`, response.status);
     }
 
-    return (await response.json()) as ImageFetchResponse;
+    return (await response.json()) as DrugImageResponse;
   } catch (error) {
     if (error instanceof DrugImageApiError) throw error;
     if (error instanceof Error && error.name === 'AbortError') {
@@ -76,12 +62,9 @@ export async function fetchDrugPackageImage(
 
 export async function checkDrugImageServiceHealth(): Promise<boolean> {
   try {
-    const response = await fetch(`${API_BASE}/health`, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-    });
-    if (!response.ok) return false;
-    const data = (await response.json()) as { status?: string };
+    const r = await fetch(`${API_BASE}/health`, { headers: { Accept: 'application/json' } });
+    if (!r.ok) return false;
+    const data = (await r.json()) as { status?: string };
     return data.status === 'ok';
   } catch {
     return false;

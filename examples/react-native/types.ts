@@ -1,30 +1,23 @@
 /**
- * Tipi condivisi con il backend FastAPI (examples/fastapi_integration.py).
+ * Tipi per l'integrazione con il backend drug image.
  * Copia in: src/types/drugImage.ts
  */
 
-export interface DrugInfoPayload {
+export interface DrugImageRequest {
   aic: string;
-  name: string;
-  dosage?: string | null;
-  pharmaceutical_form?: string | null;
-  package_quantity?: string | null;
-  marketing_authorization_holder?: string | null;
+  name?: string | null;
 }
 
-export interface ImageFetchResponse {
+export interface DrugImageResponse {
   success: boolean;
   imageUrl: string | null;
   sourcePageUrl: string | null;
-  confidenceScore: number;
-  matchedFields: string[];
-  rejectedReasons: string[];
   message: string;
 }
 
 export type DrugImageState =
   | { status: 'idle' }
   | { status: 'loading' }
-  | { status: 'success'; data: ImageFetchResponse }
-  | { status: 'unavailable'; data: ImageFetchResponse }
+  | { status: 'success'; data: DrugImageResponse }
+  | { status: 'unavailable'; data: DrugImageResponse }
   | { status: 'error'; error: string };

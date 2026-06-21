@@ -1,35 +1,27 @@
-"""API pubblica del modulo — punto di integrazione backend."""
+"""API pubblica — integrazione backend PillApp."""
 
 from __future__ import annotations
 
 from drug_image_fetcher.config import FetcherConfig
-from drug_image_fetcher.engine import DrugImageEngine
-from drug_image_fetcher.models import DrugInfo, ImageFetchResult
-from drug_image_fetcher.search.providers import SearchProvider
+from drug_image_fetcher.engine import fetch_image_by_aic
+from drug_image_fetcher.models import ImageFetchResult
 
 
 def fetch_drug_image(
-    drug: DrugInfo,
-    *,
+    aic: str,
+    name: str | None = None,
     config: FetcherConfig | None = None,
-    search_provider: SearchProvider | None = None,
 ) -> ImageFetchResult:
     """
-    Funzione principale per il backend PillApp.
+    Dato un codice AIC (e opzionalmente il nome commerciale), restituisce
+    l'immagine della confezione.
 
-    Esempio integrazione FastAPI:
-        @app.post("/api/drugs/image")
-        def get_drug_image(payload: DrugInfoPayload) -> dict:
-            drug = DrugInfo(**payload.model_dump())
-            result = fetch_drug_image(drug, config=FetcherConfig.conservative())
-            return result.to_dict()
+    L'AIC è obbligatorio ed è la fonte di verità: ogni pagina trovata viene
+    accettata solo se contiene quell'AIC nel testo o nell'URL.
 
-    Esempio integrazione C# (chiamata HTTP al servizio Python):
-        var response = await httpClient.PostAsJsonAsync("/api/drugs/image", drugInfo);
-        var result = await response.Content.ReadFromJsonAsync<ImageFetchResultDto>();
+    Esempio:
+        result = fetch_drug_image("048414104", name="Oki")
+        if result.success:
+            print(result.image_url)
     """
-    engine = DrugImageEngine(
-        config=config or FetcherConfig.production(),
-        search_provider=search_provider,
-    )
-    return engine.fetch(drug)
+    return fetch_image_by_aic(aic, name=name, config=config)
