@@ -35,6 +35,24 @@ def tokenize(text: str) -> list[str]:
     return [token for token in normalized.split(" ") if len(token) > 1]
 
 
+# Token generici da ignorare nel match URL prodotto (non distinguono confezioni)
+GENERIC_DRUG_TOKENS: frozenset[str] = frozenset({
+    "mg", "ml", "g", "ui", "mcg", "compresse", "compressa", "cpr", "capsule",
+    "capsula", "cps", "bustine", "bustina", "granulato", "granulati", "sciroppo",
+    "gocce", "fiale", "fiala", "supposte", "supposta", "crema", "pomata",
+    "farmaco", "confezione", "immagine", "compresse", "rivestite", "effervescente",
+    "orale", "generico", "generics", "mylan", "sandoz", "teva", "doc", "spa",
+})
+
+
+def significant_name_tokens(name: str) -> list[str]:
+    """Token del nome commerciale utili per match URL (es. Brufen, Tachipirina)."""
+    return [
+        t for t in tokenize(name)
+        if t not in GENERIC_DRUG_TOKENS and not t.isdigit() and len(t) > 2
+    ]
+
+
 def normalize_aic(aic: str) -> str:
     """AIC italiano: 9 cifre, eventualmente con spazi."""
     digits = re.sub(r"\D", "", aic)

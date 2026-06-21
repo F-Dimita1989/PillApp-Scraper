@@ -30,7 +30,7 @@ class FetcherConfig:
     # Pipeline
     max_search_queries: int = 4
     max_pages_per_query: int = 5
-    max_total_pages: int = 12
+    max_total_pages: int = 16
 
     # Scoring — soglia conservativa: preferisce non mostrare nulla
     min_confidence_score: float = 0.72

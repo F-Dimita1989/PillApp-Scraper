@@ -28,6 +28,7 @@ class DrugInfoPayload(BaseModel):
     pharmaceutical_form: str | None = None
     package_quantity: str | None = None
     marketing_authorization_holder: str | None = None
+    active_substance: str | None = None
 
 
 class ImageFetchResponse(BaseModel):
@@ -55,6 +56,7 @@ def get_drug_image(payload: DrugInfoPayload) -> ImageFetchResponse:
         pharmaceutical_form=payload.pharmaceutical_form,
         package_quantity=payload.package_quantity,
         marketing_authorization_holder=payload.marketing_authorization_holder,
+        active_substance=payload.active_substance,
     )
     result = fetch_drug_image(drug, config=FetcherConfig.production())
     return ImageFetchResponse.from_result(result)

@@ -16,6 +16,7 @@ class DrugInfo:
     pharmaceutical_form: str | None = None
     package_quantity: str | None = None
     marketing_authorization_holder: str | None = None
+    active_substance: str | None = None  # principio attivo, utile se nome commerciale varia
 
     def normalized_aic(self) -> str:
         return self.aic.strip().replace(" ", "")

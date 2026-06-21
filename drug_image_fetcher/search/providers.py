@@ -12,6 +12,7 @@ Ordine predefinito (build_production_providers):
 from __future__ import annotations
 
 import json
+import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable
@@ -174,45 +175,94 @@ class PharmacyProductDiscoveryProvider(SearchProvider):
     def search(self, query: str, *, max_results: int = 5) -> list[SearchResult]:
         results: list[SearchResult] = []
         seen: set[str] = set()
-        encoded = quote_plus(query)
 
-        for domain, template in PHARMACY_SEARCH_TEMPLATES:
-            if domain not in self._config.trusted_domains:
-                continue
+        # Query dedicate alle farmacie: nome commerciale prima di tutto
+        pharmacy_queries = self._pharmacy_search_queries()
 
-            search_url = template.format(query=encoded)
-            html = self._http_get(search_url)
-            if not html:
-                continue
+        for pharmacy_query in pharmacy_queries:
+            if len(results) >= max_results:
+                break
 
-            for product_url in self._extract_product_links(
-                html, search_url, query
-            ):
-                if product_url in seen:
+            encoded = quote_plus(pharmacy_query)
+
+            for domain, template in PHARMACY_SEARCH_TEMPLATES:
+                if domain not in self._config.trusted_domains:
                     continue
-                seen.add(product_url)
-                results.append(
-                    SearchResult(
-                        url=product_url,
-                        title=f"Prodotto {domain}",
-                        provider=self.name,
+
+                search_url = template.format(query=encoded)
+                html = self._http_get(search_url)
+                if not html:
+                    continue
+
+                for product_url in self._extract_product_links(html, search_url):
+                    if product_url in seen:
+                        continue
+                    seen.add(product_url)
+                    results.append(
+                        SearchResult(
+                            url=product_url,
+                            title=f"Prodotto {domain}",
+                            provider=self.name,
+                        )
                     )
-                )
-                if len(results) >= max_results:
-                    return results
+                    if len(results) >= max_results:
+                        return results
 
         return results
 
+    def _pharmacy_search_queries(self) -> list[str]:
+        """Query ottimizzate per catalogo farmacie (qualsiasi farmaco)."""
+        from drug_image_fetcher.normalize.text import normalize_spaces
+
+        name = self._drug.name.strip()
+        dosage = (self._drug.dosage or "").strip()
+        form = (self._drug.pharmaceutical_form or "").strip()
+        aic = normalize_aic(self._drug.aic)
+
+        queries: list[str] = []
+        if name and dosage:
+            queries.append(normalize_spaces(f"{name} {dosage}"))
+        if name and form:
+            queries.append(normalize_spaces(f"{name} {form}"))
+        if name:
+            queries.append(name)
+        if aic:
+            queries.append(aic)
+        substance = (self._drug.active_substance or "").strip()
+        if substance and substance.lower() != name.lower():
+            queries.append(substance)
+            if dosage:
+                queries.append(normalize_spaces(f"{substance} {dosage}"))
+
+        seen: set[str] = set()
+        unique: list[str] = []
+        for q in queries:
+            key = q.lower()
+            if key not in seen:
+                seen.add(key)
+                unique.append(q)
+        return unique
+
     def _extract_product_links(
-        self, html: str, base_url: str, query: str
+        self, html: str, base_url: str
     ) -> list[str]:
         from bs4 import BeautifulSoup
-        from drug_image_fetcher.normalize.text import normalize_text, tokenize
+        from drug_image_fetcher.normalize.text import (
+            normalize_aic,
+            normalize_text,
+            significant_name_tokens,
+        )
 
         soup = BeautifulSoup(html, "html.parser")
-        links: list[str] = []
-        name_tokens = set(tokenize(self._drug.name))
-        query_tokens = set(tokenize(query))
+        name_tokens = significant_name_tokens(self._drug.name)
+        if self._drug.active_substance:
+            name_tokens = list(
+                dict.fromkeys(
+                    name_tokens + significant_name_tokens(self._drug.active_substance)
+                )
+            )
+        aic = normalize_aic(self._drug.aic)
+        ranked: list[tuple[int, str]] = []
 
         for anchor in soup.find_all("a", href=True):
             href = anchor.get("href", "").strip()
@@ -227,19 +277,26 @@ class PharmacyProductDiscoveryProvider(SearchProvider):
 
             anchor_text = normalize_text(anchor.get_text(" ", strip=True))
             href_norm = absolute.lower()
-            relevant = bool(
-                name_tokens
-                and (
-                    any(t in href_norm for t in name_tokens)
-                    or any(t in anchor_text for t in name_tokens)
-                )
-            )
-            if not relevant and query_tokens:
-                relevant = any(t in href_norm for t in query_tokens if len(t) > 3)
+            blob = f"{href_norm} {anchor_text}"
 
-            if relevant and absolute not in links:
-                links.append(absolute)
+            if not name_tokens:
+                continue
 
+            name_hits = sum(1 for t in name_tokens if t in blob)
+            if name_hits == 0:
+                continue
+
+            score = name_hits * 10
+            if aic and aic in re.sub(r"\D", "", blob):
+                score += 50
+
+            ranked.append((score, absolute))
+
+        ranked.sort(key=lambda x: x[0], reverse=True)
+        links: list[str] = []
+        for _, url in ranked:
+            if url not in links:
+                links.append(url)
         return links[:8]
 
 

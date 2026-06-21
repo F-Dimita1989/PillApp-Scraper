@@ -19,6 +19,7 @@ def build_search_queries(drug: DrugInfo, max_queries: int = 4) -> list[str]:
     form = (drug.pharmaceutical_form or "").strip()
     quantity = (drug.package_quantity or "").strip()
     company = (drug.marketing_authorization_holder or "").strip()
+    substance = (drug.active_substance or "").strip()
 
     queries: list[str] = []
 
@@ -47,6 +48,11 @@ def build_search_queries(drug: DrugInfo, max_queries: int = 4) -> list[str]:
     # Query 4: azienda + prodotto (utile per siti istituzionali)
     if company and name:
         parts = [company, name, dosage, form, quantity]
+        queries.append(normalize_spaces(" ".join(p for p in parts if p)))
+
+    # Query 5: principio attivo (generico: es. ibuprofene, paracetamolo)
+    if substance:
+        parts = [substance, dosage, form, quantity]
         queries.append(normalize_spaces(" ".join(p for p in parts if p)))
 
     # Deduplica preservando ordine
