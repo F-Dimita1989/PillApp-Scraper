@@ -1,0 +1,22 @@
+# Render Blueprint — microservizio immagini farmaco PillApp
+# Docs: https://render.com/docs/blueprint-spec
+
+services:
+  - type: web
+    name: pillapp-drug-image
+    runtime: python
+    region: frankfurt          # cambia se preferisci oregon / ohio
+    plan: free                 # starter = niente sleep, più RAM
+    branch: main
+    buildCommand: pip install -r requirements-prod.txt
+    startCommand: python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: GOOGLE_CSE_API_KEY
+        sync: false
+      - key: GOOGLE_CSE_ENGINE_ID
+        sync: false
+      - key: DRUG_IMAGE_CACHE_DIR
+        value: /tmp/drug-image-cache
